@@ -2,10 +2,14 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import ffmpegPath from "ffmpeg-static";
+import youtubedl from "youtube-dl-exec";
 import type { ShortCandidate } from "./job-types";
 import { logger } from "./logger";
 
 const workDir = "/tmp/matcha-shorts";
+const ffmpegBinary = ffmpegPath || "ffmpeg";
+const verticalCoverFilter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920";
 
 function run(command: string, args: string[]) {
   logger.info("Running media command", { command, args });
@@ -64,12 +68,12 @@ export async function normalizeVerticalVideo(inputPath: string) {
   const outputPath = join(workDir, `${randomUUID()}-vertical.mp4`);
   await mkdir(dirname(outputPath), { recursive: true });
 
-  await run("ffmpeg", [
+  await run(ffmpegBinary, [
     "-y",
     "-i",
     inputPath,
     "-vf",
-    "scale=1080:-2,crop=1080:1920",
+    verticalCoverFilter,
     "-c:v",
     "libx264",
     "-preset",
@@ -85,27 +89,20 @@ export async function normalizeVerticalVideo(inputPath: string) {
 export async function downloadYoutube(url: string, cookiesPath?: string) {
   await mkdir(workDir, { recursive: true });
   const outputPath = join(workDir, `${randomUUID()}-youtube.mp4`);
-  const args = [
-    "-f",
-    "worst[ext=mp4]/worst",
-    "--merge-output-format",
-    "mp4",
-    "-o",
-    outputPath,
-    url
-  ];
-
-  if (cookiesPath) {
-    args.unshift("--cookies", cookiesPath);
-  }
-
-  await run("yt-dlp", args);
+  await youtubedl(url, {
+    output: outputPath,
+    format: "worst[ext=mp4]/worst",
+    mergeOutputFormat: "mp4",
+    cookies: cookiesPath,
+    noCheckCertificates: true,
+    ffmpegLocation: ffmpegBinary
+  });
   return outputPath;
 }
 
 export async function detectScenes(inputPath: string): Promise<ShortCandidate[]> {
   const outputPattern = join(workDir, `${randomUUID()}-scene-%03d.jpg`);
-  await run("ffmpeg", [
+  await run(ffmpegBinary, [
     "-y",
     "-i",
     inputPath,
@@ -134,7 +131,7 @@ export async function detectScenes(inputPath: string): Promise<ShortCandidate[]>
 export async function cutClip(inputPath: string, startSeconds: number, endSeconds: number) {
   const outputPath = join(workDir, `${randomUUID()}-clip.mp4`);
 
-  await run("ffmpeg", [
+  await run(ffmpegBinary, [
     "-y",
     "-ss",
     String(startSeconds),
@@ -143,7 +140,7 @@ export async function cutClip(inputPath: string, startSeconds: number, endSecond
     "-i",
     inputPath,
     "-vf",
-    "scale=1080:-2,crop=1080:1920",
+    verticalCoverFilter,
     "-c:v",
     "libx264",
     "-preset",

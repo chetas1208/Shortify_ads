@@ -92,10 +92,10 @@ select {
 
 .app-shell-grid {
   background-image:
-    linear-gradient(rgba(143, 245, 195, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(143, 245, 195, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(143, 245, 195, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(143, 245, 195, 0.02) 1px, transparent 1px);
   background-position: center center;
-  background-size: 72px 72px;
+  background-size: 88px 88px;
 }
 
 .surface-panel {

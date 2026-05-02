@@ -8,7 +8,7 @@
     "start": "next start",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "worker:job": "tsx workers/run-job-worker.ts"
+    "worker:job": "node --env-file=.env ../../node_modules/tsx/dist/cli.mjs workers/run-job-worker.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.45",

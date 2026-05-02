@@ -6,10 +6,11 @@ import { generateVideoWithGmi, rankShortMoments } from "@/lib/gmi";
 import { getUserMemory, writeMemory } from "@/lib/hydradb";
 import { setJobProgress } from "@/lib/job-progress";
 import type { GeneratedOutput, JobRecord } from "@/lib/job-types";
+import { scheduleR2Cleanup } from "@/lib/job-queue";
 import { updateJob } from "@/lib/jobs";
-import { downloadYoutube } from "@/lib/ffmpeg";
+import { cutClip, downloadYoutube } from "@/lib/ffmpeg";
 import { cleanupTempMediaObjects, preprocessVideoForJob } from "@/lib/preprocess-video";
-import { createPresignedGet } from "@/lib/r2";
+import { buildR2Key, createPresignedGet, mediaExpiresAt, putFileToR2 } from "@/lib/r2";
 import { localScoreCandidates } from "@/lib/scoring";
 
 async function downloadR2Source(r2Key: string) {
@@ -91,21 +92,43 @@ export async function processVideoJob(job: JobRecord) {
     });
     await updateJob(job.id, { stage: "generating", progress: 78 });
 
-    const outputs: GeneratedOutput[] = ranked.slice(0, 5).map((candidate) => ({
-      id: randomUUID(),
-      title: candidate.title,
-      hook: candidate.hook,
-      score: candidate.score,
-      platform: job.input.platform,
-      metadata: {
-        aggregateSummary: processedVideo.aggregateSummary,
-        startSeconds: candidate.startSeconds,
-        endSeconds: candidate.endSeconds,
-        sourceR2Key: source?.r2Key,
-        sourceUrl: job.input.sourceUrl,
-        tempChunkKeys: processedVideo.tempChunkKeys
-      }
-    }));
+    const outputs: GeneratedOutput[] = await Promise.all(
+      ranked.slice(0, 5).map(async (candidate, index) => {
+        const outputId = randomUUID();
+        const startSeconds = candidate.startSeconds ?? 0;
+        const endSeconds = candidate.endSeconds ?? startSeconds + 12;
+        const clipPath = await cutClip(processedVideo.processedInputPath, startSeconds, endSeconds);
+        const key = buildR2Key({
+          userId: job.userId,
+          jobId: job.id,
+          assetId: outputId,
+          kind: "outputs",
+          fileName: `clip-${index + 1}.mp4`
+        });
+        const upload = await putFileToR2({ path: clipPath, key, mimeType: "video/mp4" });
+        const expiresAt = mediaExpiresAt();
+        await scheduleR2Cleanup(key, expiresAt);
+
+        return {
+          id: outputId,
+          title: candidate.title,
+          hook: candidate.hook,
+          score: candidate.score,
+          platform: job.input.platform,
+          url: upload.url,
+          r2Key: key,
+          expiresAt: expiresAt.toISOString(),
+          metadata: {
+            aggregateSummary: processedVideo.aggregateSummary,
+            startSeconds,
+            endSeconds,
+            sourceR2Key: source?.r2Key,
+            sourceUrl: job.input.sourceUrl,
+            tempChunkKeys: processedVideo.tempChunkKeys
+          }
+        };
+      })
+    );
 
     if (outputs.length === 0) {
       outputs.push(
@@ -130,7 +153,7 @@ export async function processVideoJob(job: JobRecord) {
       status: "completed",
       stage: "completed",
       progress: 100,
-      message: "Short candidates are ready"
+      message: "Short clips are ready"
     });
 
     return updateJob(job.id, {
@@ -138,6 +161,7 @@ export async function processVideoJob(job: JobRecord) {
       status: "completed",
       progress: 100,
       outputs,
+      error: null,
       completedAt: new Date().toISOString()
     });
   } finally {

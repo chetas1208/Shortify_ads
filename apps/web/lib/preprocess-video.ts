@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
+import ffmpegPath from "ffmpeg-static";
+import ffprobe from "ffprobe-static";
 import { env } from "./env";
 import type {
   AdjustedChunkResult,
@@ -14,6 +16,8 @@ import { logger } from "./logger";
 import { deleteR2Objects, putFileToR2 } from "./r2";
 
 const workDir = "/tmp/matcha-shorts";
+const ffmpegBinary = ffmpegPath || "ffmpeg";
+const ffprobeBinary = ffprobe.path || "ffprobe";
 
 type MediaProbeOutput = {
   format?: {
@@ -167,7 +171,7 @@ async function replaceFile(sourcePath: string, destinationPath: string) {
 export async function getVideoMetadata(inputPath: string): Promise<VideoMetadata> {
   const [fileStats, probe] = await Promise.all([
     stat(inputPath),
-    runMediaCommand("ffprobe", [
+    runMediaCommand(ffprobeBinary, [
       "-v",
       "error",
       "-print_format",
@@ -204,7 +208,7 @@ export function shouldPreprocess(
 
 export async function transcodeForProcessing(inputPath: string, outputPath: string) {
   await mkdir(dirname(outputPath), { recursive: true });
-  await runMediaCommand("ffmpeg", transcodeArgs(inputPath, outputPath, env.FFMPEG_CRF_DEFAULT));
+  await runMediaCommand(ffmpegBinary, transcodeArgs(inputPath, outputPath, env.FFMPEG_CRF_DEFAULT));
   return outputPath;
 }
 
@@ -214,7 +218,7 @@ export async function splitIntoChunks(
   chunkSeconds: number
 ): Promise<ChunkInfo[]> {
   await mkdir(outputDir, { recursive: true });
-  await runMediaCommand("ffmpeg", splitArgs(chunkSeconds, inputPath, outputDir));
+  await runMediaCommand(ffmpegBinary, splitArgs(chunkSeconds, inputPath, outputDir));
 
   const files = (await readdir(outputDir))
     .filter((fileName) => fileName.endsWith(".mp4"))
@@ -278,7 +282,7 @@ export async function enforceChunkSizeLimit(
 
     const tempOutput = chunkPath.replace(/\.mp4$/i, `-${strategy.label}.mp4`);
     await runMediaCommand(
-      "ffmpeg",
+      ffmpegBinary,
       transcodeArgs(chunkPath, tempOutput, strategy.crf, strategy.maxWidth)
     );
 

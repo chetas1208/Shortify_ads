@@ -1,4 +1,4 @@
-import { generateVideoWithGmi, interpretMultimodalIntent } from "@/lib/gmi";
+import { generateVideoVariantsWithGmi, interpretMultimodalIntent } from "@/lib/gmi";
 import { getUserMemory, writeMemory } from "@/lib/hydradb";
 import { setJobProgress } from "@/lib/job-progress";
 import type { JobRecord } from "@/lib/job-types";
@@ -48,19 +48,20 @@ export async function processMultimodalJob(job: JobRecord) {
   });
   await updateJob(job.id, { stage: "stitching", progress: 84 });
 
-  const output = await generateVideoWithGmi({
+  const outputs = await generateVideoVariantsWithGmi({
     mode: "text_to_video",
     imageUrl,
     prompt: `${plan.editIntent}\nStyle: ${plan.stylePrompt}${sourceReference}`,
     title: "Guided 30s reel",
-    platform: job.input.platform
+    platform: job.input.platform,
+    count: 2
   });
 
   await writeMemory({
     userId: job.userId,
     namespace: "iteration_memory",
     text: `${plan.editIntent}\n${plan.stylePrompt}`,
-    metadata: { jobId: job.id, mode: job.kind, outputId: output.id }
+    metadata: { jobId: job.id, mode: job.kind, outputIds: outputs.map((output) => output.id) }
   });
 
   await setJobProgress({
@@ -68,14 +69,15 @@ export async function processMultimodalJob(job: JobRecord) {
     status: "completed",
     stage: "completed",
     progress: 100,
-    message: "Guided reel is ready"
+    message: "Guided reels are ready"
   });
 
   return updateJob(job.id, {
     stage: "completed",
     status: "completed",
     progress: 100,
-    outputs: [output],
+    outputs,
+    error: null,
     completedAt: new Date().toISOString()
   });
 }

@@ -42,6 +42,19 @@ function extractOutputs(job: JobRecord): GeneratedOutput[] {
   return Array.isArray(job.result?.outputs) ? (job.result?.outputs as GeneratedOutput[]) : [];
 }
 
+function hasMissingPreview(job?: JobRecord) {
+  if (!job) {
+    return false;
+  }
+
+  return extractOutputs(job).some((output) => output.gmiTaskId && !output.url);
+}
+
+function thumbnailForOutput(output: GeneratedOutput) {
+  const metadata = output.metadata as { thumbnailUrl?: string; raw?: { outcome?: { thumbnail_image_url?: string } } } | undefined;
+  return metadata?.thumbnailUrl ?? metadata?.raw?.outcome?.thumbnail_image_url;
+}
+
 function statusTone(status: JobRecord["status"]) {
   if (status === "completed") {
     return "border-emerald-300/20 bg-emerald-300/10 text-emerald-100";
@@ -71,6 +84,64 @@ function formatTime(value?: string) {
   });
 }
 
+function VideoPreviewCard({ output }: { output: GeneratedOutput }) {
+  const thumbnailUrl = thumbnailForOutput(output);
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="aspect-[16/10] bg-[radial-gradient(circle_at_top_left,rgba(143,245,195,0.15),transparent_32%),linear-gradient(180deg,rgba(13,20,32,0.96),rgba(8,12,20,0.96))] p-3">
+        <div className="flex h-full flex-col overflow-hidden rounded-[20px] border border-white/8 bg-black/25">
+          {output.url ? (
+            <video
+              key={output.url}
+              src={output.url}
+              poster={thumbnailUrl}
+              controls
+              playsInline
+              preload="metadata"
+              className="aspect-video w-full bg-black object-cover"
+            />
+          ) : (
+            <div className="flex aspect-video items-center justify-center bg-black/40 text-sm text-zinc-500">
+              Video processing
+            </div>
+          )}
+
+          <div className="flex flex-1 flex-col justify-between p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-base font-semibold text-white">{output.title}</p>
+                <p className="mt-2 text-sm text-zinc-400">{output.caption || "Generated result"}</p>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                {output.platform.replaceAll("_", " ")}
+              </span>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {output.url ? (
+                <a
+                  href={output.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/15"
+                >
+                  Open video
+                </a>
+              ) : null}
+              {output.gmiTaskId ? (
+                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-400">
+                  Task {output.gmiTaskId.slice(0, 8)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function DashboardClient({ email, initialJobs }: DashboardClientProps) {
   const [view, setView] = useState<DashboardView>("workspace");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -91,6 +162,19 @@ export function DashboardClient({ email, initialJobs }: DashboardClientProps) {
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? activeJob;
   const completedJobs = jobs.filter((job) => job.status === "completed");
   const outputCount = completedJobs.reduce((sum, job) => sum + extractOutputs(job).length, 0);
+
+  async function refreshJob(jobId: string) {
+    const response = await fetch(`/api/jobs/${jobId}`);
+    if (!response.ok) {
+      return;
+    }
+
+    const nextJob = (await response.json()) as JobRecord;
+    setJobs((current) => {
+      const existing = current.some((job) => job.id === nextJob.id);
+      return existing ? current.map((job) => (job.id === nextJob.id ? nextJob : job)) : [nextJob, ...current];
+    });
+  }
 
   useEffect(() => {
     if (!activeJob || activeJob.status === "completed" || activeJob.status === "failed") {
@@ -117,10 +201,22 @@ export function DashboardClient({ email, initialJobs }: DashboardClientProps) {
             : job
         )
       );
+
+      if (progress.status === "completed" || progress.status === "failed") {
+        await refreshJob(activeJob.id);
+      }
     }, 1500);
 
     return () => window.clearInterval(timer);
   }, [activeJob]);
+
+  useEffect(() => {
+    if (!selectedJob || selectedJob.status !== "completed" || !hasMissingPreview(selectedJob)) {
+      return;
+    }
+
+    void refreshJob(selectedJob.id);
+  }, [selectedJob]);
 
   function selectMode(nextMode: JobKind) {
     setMode(nextMode);
@@ -398,21 +494,7 @@ export function DashboardClient({ email, initialJobs }: DashboardClientProps) {
               {view === "results" ? (
                 <div className="grid gap-3 lg:grid-cols-2">
                   {completedJobs.flatMap((job) =>
-                    extractOutputs(job).map((output) => (
-                      <Card key={output.id} className="overflow-hidden p-0">
-                        <div className="aspect-[16/10] bg-[radial-gradient(circle_at_top_left,rgba(143,245,195,0.15),transparent_32%),linear-gradient(180deg,rgba(13,20,32,0.96),rgba(8,12,20,0.96))] p-4">
-                          <div className="flex h-full flex-col justify-between rounded-[20px] border border-white/8 bg-black/15 p-4">
-                            <span className="w-fit rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-                              {output.platform.replaceAll("_", " ")}
-                            </span>
-                            <div>
-                              <p className="text-lg font-semibold text-white">{output.title}</p>
-                              <p className="mt-2 text-sm text-zinc-400">{output.caption || "Generated result"}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </Card>
-                    ))
+                    extractOutputs(job).map((output) => <VideoPreviewCard key={output.id} output={output} />)
                   )}
                   {outputCount === 0 ? (
                     <Card className="p-6">

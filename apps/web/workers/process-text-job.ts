@@ -1,4 +1,4 @@
-import { generateVideoWithGmi, refinePrompt } from "@/lib/gmi";
+import { generateVideoVariantsWithGmi, refinePrompt } from "@/lib/gmi";
 import { getUserMemory, saveUserPreference, writeMemory } from "@/lib/hydradb";
 import { setJobProgress } from "@/lib/job-progress";
 import type { JobRecord } from "@/lib/job-types";
@@ -33,16 +33,17 @@ export async function processTextJob(job: JobRecord) {
   });
   await updateJob(job.id, { stage: "generating", progress: 60, plan: refined });
 
-  const output = await generateVideoWithGmi({
+  const outputs = await generateVideoVariantsWithGmi({
     mode: "text_to_video",
     prompt: refined.prompt,
     title: refined.title,
-    platform: job.input.platform
+    platform: job.input.platform,
+    count: 2
   });
 
   await saveUserPreference({
     userId: job.userId,
-    outputs: [output],
+    outputs,
     captionTone: memory.captionTone
   });
 
@@ -51,14 +52,15 @@ export async function processTextJob(job: JobRecord) {
     status: "completed",
     stage: "completed",
     progress: 100,
-    message: "Video result is ready"
+    message: "Two video results are ready"
   });
 
   return updateJob(job.id, {
     stage: "completed",
     status: "completed",
     progress: 100,
-    outputs: [output],
+    outputs,
+    error: null,
     completedAt: new Date().toISOString()
   });
 }

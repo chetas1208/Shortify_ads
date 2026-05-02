@@ -54,6 +54,11 @@ function extractOutputs(job: JobRecord): GeneratedOutput[] {
   return Array.isArray(job.result?.outputs) ? (job.result?.outputs as GeneratedOutput[]) : [];
 }
 
+function thumbnailForOutput(output: GeneratedOutput) {
+  const metadata = output.metadata as { thumbnailUrl?: string; raw?: { outcome?: { thumbnail_image_url?: string } } } | undefined;
+  return metadata?.thumbnailUrl ?? metadata?.raw?.outcome?.thumbnail_image_url;
+}
+
 function canSubmit(
   mode: JobKind,
   prompt: string,
@@ -196,7 +201,18 @@ export function DashboardChat({
               {recentOutputs.map((output) => (
                 <div key={output.id} className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Output</p>
-                  <p className="mt-2 text-sm font-semibold text-white">{output.title}</p>
+                  {output.url ? (
+                    <video
+                      key={output.url}
+                      src={output.url}
+                      poster={thumbnailForOutput(output)}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="mt-3 aspect-video w-full rounded-[16px] bg-black object-cover"
+                    />
+                  ) : null}
+                  <p className="mt-3 text-sm font-semibold text-white">{output.title}</p>
                   {output.caption ? <p className="mt-2 text-sm text-zinc-400">{output.caption}</p> : null}
                 </div>
               ))}
