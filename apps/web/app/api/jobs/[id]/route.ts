@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUserProfile } from "@/lib/auth/server";
-import { getUserJob } from "@/lib/jobs";
+import { hydrateGeneratedOutputFromGmi } from "@/lib/gmi";
+import type { GeneratedOutput } from "@/lib/job-types";
+import { getUserJob, updateJob } from "@/lib/jobs";
 
 export const runtime = "nodejs";
 
@@ -10,10 +12,32 @@ export async function GET(
 ) {
   const { id } = await context.params;
   const profile = await requireUserProfile();
-  const job = await getUserJob(id, profile.id);
+  let job = await getUserJob(id, profile.id);
 
   if (!job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
+
+  const outputs = Array.isArray(job.result?.outputs) ? (job.result.outputs as GeneratedOutput[]) : [];
+  const missingPreview = outputs.some((output) => output.gmiTaskId && !output.url);
+
+  if (missingPreview) {
+    const hydratedOutputs = await Promise.all(outputs.map((output) => hydrateGeneratedOutputFromGmi(output)));
+    const changed = hydratedOutputs.some((output, index) => output.url !== outputs[index]?.url);
+
+    if (changed) {
+      const updatedJob = await updateJob(job.id, { outputs: hydratedOutputs });
+      return NextResponse.json(updatedJob);
+    } else {
+      const fallbackJob = {
+        ...job,
+        result: {
+          ...(typeof job.result === 'object' && job.result ? job.result : {}),
+          outputs: hydratedOutputs
+        }
+      };
+      return NextResponse.json(fallbackJob);
+    }
   }
 
   return NextResponse.json(job);
