@@ -122,7 +122,7 @@ export async function POST(request: Request) {
       text,
       youtubeUrl,
       assetIds: body.assetIds,
-      assets: assets.map((asset) => ({
+      assets: assets.map((asset: any) => ({
         id: asset.id,
         kind: asset.kind,
         type: asset.mimeType?.startsWith("image/") ? "image" : "video",
