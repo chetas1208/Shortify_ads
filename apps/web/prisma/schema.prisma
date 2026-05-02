@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobKind {
+  text_to_video
+  video_to_shorts
+  multimodal_edit
+}
+
+enum JobStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum JobStage {
+  received
+  uploading
+  preprocessing
+  transcribing
+  analyzing
+  ranking
+  generating
+  stitching
+  finalizing
+  completed
+  failed
+}
+
+enum AssetKind {
+  upload
+  chunk
+  output
+  reference
+}
+
+model Job {
+  id          String      @id @default(cuid())
+  userId      String
+  threadId    String?
+  kind        JobKind
+  status      JobStatus   @default(queued)
+  stage       JobStage    @default(received)
+  progress    Int         @default(0)
+  input       Json
+  plan        Json        @default("{}")
+  result      Json        @default("{}")
+  error       String?
+  attempts    Int         @default(0)
+  nextRunAt   DateTime    @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thread      ChatThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  assets      Asset[]
+
+  @@index([userId, createdAt])
+  @@index([status, nextRunAt])
+}
+
+model UserProfile {
+  id               String        @id @default(cuid())
+  supabaseUserId   String        @unique
+  email            String?
+  displayName      String?
+  hydraSubTenantId String        @unique
+  settings         Json          @default("{}")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  threads          ChatThread[]
+  messages         ChatMessage[]
+  jobs             Job[]
+  assets           Asset[]
+
+  @@index([supabaseUserId])
+  @@index([email])
+}
+
+model ChatThread {
+  id        String        @id @default(cuid())
+  userId    String
+  title     String
+  mode      JobKind?
+  summary   String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  user      UserProfile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+  jobs      Job[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  threadId  String
+  userId    String
+  role      String
+  content   String?
+  metadata  Json        @default("{}")
+  createdAt DateTime    @default(now())
+  thread    ChatThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user      UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model Asset {
+  id        String      @id @default(cuid())
+  userId    String
+  jobId     String?
+  kind      AssetKind
+  mimeType  String?
+  fileName  String?
+  bytes     Int?
+  r2Key     String
+  publicUrl String?
+  metadata  Json        @default("{}")
+  expiresAt DateTime
+  deletedAt DateTime?
+  createdAt DateTime    @default(now())
+  user      UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job       Job?        @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([jobId])
+  @@index([expiresAt, deletedAt])
+}

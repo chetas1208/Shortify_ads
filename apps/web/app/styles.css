@@ -1,0 +1,211 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --background: #07111a;
+  --background-elevated: rgba(10, 19, 28, 0.78);
+  --panel: rgba(15, 24, 36, 0.74);
+  --panel-strong: rgba(12, 19, 31, 0.94);
+  --line: rgba(148, 163, 184, 0.18);
+  --line-strong: rgba(148, 163, 184, 0.28);
+  --text: #f5f7fb;
+  --muted: #97a5ba;
+  --muted-strong: #c7d2e2;
+  --accent: #8ff5c3;
+  --accent-strong: #4ce0b1;
+  --accent-secondary: #84a8ff;
+  --danger: #ff7d87;
+  --success: #7ff0b1;
+  --shadow-soft: 0 20px 80px rgba(3, 9, 18, 0.35);
+  --shadow-card: 0 28px 90px rgba(2, 8, 20, 0.42);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(104, 225, 186, 0.16), transparent 28rem),
+    radial-gradient(circle at 84% 12%, rgba(121, 154, 255, 0.16), transparent 26rem),
+    radial-gradient(circle at 50% 120%, rgba(67, 107, 255, 0.1), transparent 36rem),
+    linear-gradient(180deg, #050a10 0%, #08111a 46%, #04070d 100%);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+  letter-spacing: -0.04em;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(143, 245, 195, 0.28);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(151, 165, 186, 0.24);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(151, 165, 186, 0.38);
+  background-clip: padding-box;
+}
+
+.app-shell-grid {
+  background-image:
+    linear-gradient(rgba(143, 245, 195, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(143, 245, 195, 0.03) 1px, transparent 1px);
+  background-position: center center;
+  background-size: 72px 72px;
+}
+
+.surface-panel {
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    var(--panel);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(22px);
+}
+
+.surface-subtle {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(16px);
+}
+
+.hero-glow {
+  position: relative;
+}
+
+.hero-glow::before {
+  position: absolute;
+  inset: -18% -8% auto;
+  height: 18rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(143, 245, 195, 0.2), transparent 68%);
+  content: "";
+  filter: blur(22px);
+  pointer-events: none;
+}
+
+.section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(143, 245, 195, 0.18);
+  background: rgba(143, 245, 195, 0.08);
+  color: #c9ffe7;
+  border-radius: 999px;
+  padding: 0.38rem 0.8rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.soft-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(151, 165, 186, 0.24), transparent);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(143, 245, 195, 0.1);
+}
+
+.ambient-border {
+  position: relative;
+}
+
+.ambient-border::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(143, 245, 195, 0.24),
+    rgba(132, 168, 255, 0.18),
+    rgba(255, 255, 255, 0.08)
+  );
+  content: "";
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.float-up {
+  animation: float-up 700ms ease-out both;
+}
+
+.pulse-line {
+  animation: pulse-line 2.8s ease-in-out infinite;
+}
+
+@keyframes float-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-line {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}

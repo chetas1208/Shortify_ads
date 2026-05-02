@@ -1,0 +1,15 @@
+{
+  "name": "matcha-hack",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace apps/web run dev",
+    "worker": "npm --workspace apps/web run worker",
+    "build": "npm --workspace apps/web run build",
+    "lint": "npm --workspace apps/web run lint",
+    "prisma:generate": "npm --workspace apps/web run prisma:generate",
+    "prisma:migrate": "npm --workspace apps/web run prisma:migrate"
+  }
+}
