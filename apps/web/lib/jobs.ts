@@ -16,8 +16,8 @@ type JobPatch = Partial<{
   completedAt: string | null;
 }>;
 
-function toJson(value: unknown): Prisma.InputJsonValue {
-  return value as Prisma.InputJsonValue;
+function toJson(value: unknown): any {
+  return value as any;
 }
 
 function fromDb(job: {
