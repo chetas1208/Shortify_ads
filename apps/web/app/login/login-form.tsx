@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { ArrowRight, Mail, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Mail, Sparkles, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createSupabaseBrowserClient } from "@/lib/auth/client";
 
 export function LoginForm({ callbackError }: { callbackError?: string }) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -40,6 +42,29 @@ export function LoginForm({ callbackError }: { callbackError?: string }) {
     }
   }
 
+  async function signInGuest() {
+    setStatus("sending");
+    setMessage("");
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.signInAnonymously();
+
+      if (error) {
+        if (error.message.toLowerCase().includes("anonymous")) {
+          throw new Error("Anonymous sign-ins are disabled. Please enable them in your Supabase Auth Providers settings.");
+        }
+        throw error;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "Unable to sign in as guest.");
+    }
+  }
+
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8">
       <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/15 bg-emerald-200/10 px-3 py-1 text-xs font-medium text-emerald-100">
@@ -69,10 +94,27 @@ export function LoginForm({ callbackError }: { callbackError?: string }) {
         </div>
 
         <Button className="w-full" type="submit" size="lg" disabled={status === "sending"}>
-          {status === "sending" ? "Sending magic link..." : "Send magic link"}
+          {status === "sending" ? "Processing..." : "Send magic link"}
           {status !== "sending" ? <ArrowRight className="h-4 w-4" /> : null}
         </Button>
       </form>
+
+      <div className="relative mt-8 flex items-center justify-center text-sm">
+        <span className="bg-[rgba(13,20,32,0.98)] px-2 text-zinc-500">Or bypass email</span>
+        <div className="absolute left-0 right-0 top-1/2 -z-10 border-t border-white/10" />
+      </div>
+
+      <Button
+        variant="secondary"
+        className="mt-6 w-full"
+        size="lg"
+        type="button"
+        onClick={signInGuest}
+        disabled={status === "sending"}
+      >
+        <User className="mr-2 h-4 w-4" />
+        Continue as Guest
+      </Button>
 
       {message ? <p className={`mt-4 text-sm ${status === "error" ? "text-red-300" : "text-emerald-100"}`}>{message}</p> : null}
       {!message && callbackError ? <p className="mt-4 text-sm text-red-300">{callbackError}</p> : null}
