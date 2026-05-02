@@ -22,7 +22,7 @@ export async function PUT(request: Request) {
     where: { id: profile.id },
     data: {
       displayName: body.displayName,
-      ...(body.settings ? { settings: body.settings as Prisma.InputJsonValue } : {})
+      ...(body.settings ? { settings: body.settings as any } : {})
     }
   });
 
