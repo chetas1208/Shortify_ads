@@ -45,6 +45,136 @@ function buildPixversePayload(input: {
   return payload;
 }
 
+type PixverseRequestResponse = {
+  request_id?: string;
+  id?: string;
+  task_id?: string;
+  status?: string;
+  model?: string;
+  outcome?: {
+    video_url?: string;
+    thumbnail_image_url?: string;
+  } | null;
+  url?: string;
+  output_url?: string;
+  thumbnail_url?: string;
+  error?: string;
+  message?: string;
+  [key: string]: unknown;
+};
+
+function gmiHeaders() {
+  return {
+    "content-type": "application/json",
+    authorization: `Bearer ${requireEnv("GMI_API_KEY")}`,
+    ...(env.GMI_ORG_ID ? { "X-Organization-ID": env.GMI_ORG_ID } : {})
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function requestStatusUrl(requestId: string) {
+  return `${env.GMI_PIXVERSE_API_URL.replace(/\/$/, "")}/${requestId}`;
+}
+
+function normalizePixverseStatus(status?: string) {
+  return status?.trim().toLowerCase() ?? "unknown";
+}
+
+function extractArtifactUrls(data: PixverseRequestResponse) {
+  return {
+    videoUrl: data.outcome?.video_url ?? data.url ?? data.output_url,
+    thumbnailUrl: data.outcome?.thumbnail_image_url ?? data.thumbnail_url
+  };
+}
+
+async function submitPixverseRequest(input: {
+  mode: "text_to_video" | "image_to_video" | "video_stylize";
+  prompt: string;
+}) {
+  const response = await fetch(env.GMI_PIXVERSE_API_URL, {
+    method: "POST",
+    headers: gmiHeaders(),
+    body: JSON.stringify({
+      model: modelIds.pixverse56(),
+      payload: buildPixversePayload({
+        prompt: input.prompt,
+        mode: input.mode
+      })
+    }),
+    signal: AbortSignal.timeout(env.GMI_REQUEST_TIMEOUT_MS)
+  });
+
+  if (!response.ok) {
+    throw new Error(`GMI video request failed: ${response.status} ${await response.text()}`);
+  }
+
+  return (await response.json()) as PixverseRequestResponse;
+}
+
+async function getPixverseRequest(requestId: string) {
+  const response = await fetch(requestStatusUrl(requestId), {
+    method: "GET",
+    headers: {
+      authorization: `Bearer ${requireEnv("GMI_API_KEY")}`,
+      ...(env.GMI_ORG_ID ? { "X-Organization-ID": env.GMI_ORG_ID } : {})
+    },
+    signal: AbortSignal.timeout(env.GMI_REQUEST_TIMEOUT_MS)
+  });
+
+  if (!response.ok) {
+    throw new Error(`GMI video status failed: ${response.status} ${await response.text()}`);
+  }
+
+  return (await response.json()) as PixverseRequestResponse;
+}
+
+async function waitForPixverseArtifact(requestId: string) {
+  const startedAt = Date.now();
+  const timeoutMs = 8 * 60 * 1000;
+  const pollIntervalMs = 3000;
+  let lastStatus = "dispatched";
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const data = await withRetry("gmi.video.status", () => getPixverseRequest(requestId), {
+      attempts: 2,
+      baseDelayMs: 1000
+    });
+
+    const status = normalizePixverseStatus(data.status);
+    lastStatus = status;
+
+    if (status === "success" || status === "finished" || status === "completed") {
+      const { videoUrl } = extractArtifactUrls(data);
+      if (videoUrl) {
+        return data;
+      }
+    }
+
+    if (status === "failed" || status === "error" || status === "cancelled" || status === "canceled") {
+      throw new Error(data.error ?? data.message ?? `GMI video job ended with status ${status}`);
+    }
+
+    await sleep(pollIntervalMs);
+  }
+
+  throw new Error(`Timed out waiting for GMI video result for request ${requestId}. Last status: ${lastStatus}`);
+}
+
+function variantPrompt(prompt: string, index: number) {
+  if (index === 0) {
+    return prompt;
+  }
+
+  return `${prompt}\n\nAlternate cut directive: keep the same subject and intent, but vary the opening frame, camera motion, pacing, and composition so this feels like a distinct second take.`;
+}
+
+function variantTitle(title: string, index: number) {
+  return `${title} ${index + 1}`;
+}
+
 async function gmiChat<T>(model: string, messages: ChatMessage[], fallback: T): Promise<T> {
   const apiKey = requireEnv("GMI_API_KEY");
 
@@ -213,39 +343,84 @@ export async function generateVideoWithGmi(input: {
     };
   }
 
-  return withRetry("gmi.video.generate", async () => {
-    const response = await fetch(env.GMI_PIXVERSE_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${requireEnv("GMI_API_KEY")}`
-      },
-      body: JSON.stringify({
-        model: modelIds.pixverse56(),
-        payload: buildPixversePayload({
-          prompt: input.prompt,
-          mode: input.mode
-        })
-      }),
-      signal: AbortSignal.timeout(env.GMI_REQUEST_TIMEOUT_MS)
-    });
-
-    if (!response.ok) {
-      throw new Error(`GMI video request failed: ${response.status} ${await response.text()}`);
-    }
-
-    const data = await response.json();
-    return {
-      id: crypto.randomUUID(),
-      title: input.title,
-      url: data.outcome?.video_url ?? data.url ?? data.output_url,
-      gmiTaskId: data.request_id ?? data.id ?? data.task_id,
-      caption: input.prompt.slice(0, 160),
-      platform: input.platform,
-      metadata: {
-        model: modelIds.pixverse56(),
-        raw: data
-      }
-    };
+  const submitted = await submitPixverseRequest({
+    mode: input.mode,
+    prompt: input.prompt
   });
+  const requestId = submitted.request_id ?? submitted.id ?? submitted.task_id;
+
+  if (!requestId) {
+    throw new Error("GMI video request succeeded without returning a request ID");
+  }
+
+  const data = await waitForPixverseArtifact(requestId);
+  const { videoUrl, thumbnailUrl } = extractArtifactUrls(data);
+
+  return {
+    id: crypto.randomUUID(),
+    title: input.title,
+    url: videoUrl,
+    gmiTaskId: requestId,
+    caption: input.prompt.slice(0, 160),
+    platform: input.platform,
+    metadata: {
+      model: modelIds.pixverse56(),
+      thumbnailUrl,
+      raw: data
+    }
+  };
+}
+
+export async function generateVideoVariantsWithGmi(input: {
+  mode: "text_to_video" | "image_to_video" | "video_stylize";
+  prompt: string;
+  title: string;
+  platform: GeneratedOutput["platform"];
+  sourceUrl?: string;
+  imageUrl?: string;
+  count?: number;
+}) {
+  const count = Math.max(1, Math.min(input.count ?? 2, 4));
+
+  return Promise.all(
+    Array.from({ length: count }, (_, index) =>
+      generateVideoWithGmi({
+        ...input,
+        prompt: variantPrompt(input.prompt, index),
+        title: variantTitle(input.title, index)
+      })
+    )
+  );
+}
+
+export async function hydrateGeneratedOutputFromGmi(output: GeneratedOutput): Promise<GeneratedOutput> {
+  if (output.url || !output.gmiTaskId || !env.GMI_API_KEY) {
+    return output;
+  }
+
+  const data = await withRetry("gmi.video.hydrate", () => getPixverseRequest(output.gmiTaskId as string), {
+    attempts: 2,
+    baseDelayMs: 1000
+  }).catch(() => undefined);
+
+  if (!data) {
+    return output;
+  }
+
+  const status = normalizePixverseStatus(data.status);
+  const { videoUrl, thumbnailUrl } = extractArtifactUrls(data);
+
+  if (!videoUrl || (status !== "success" && status !== "finished" && status !== "completed")) {
+    return output;
+  }
+
+  return {
+    ...output,
+    url: videoUrl,
+    metadata: {
+      ...(output.metadata ?? {}),
+      thumbnailUrl,
+      raw: data
+    }
+  };
 }
